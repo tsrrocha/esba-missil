@@ -1387,3 +1387,16 @@ build/log/idf_py_stderr_output_28720
 build/log/idf_py_stdout_output_5584
 build/log/idf_py_stdout_output_28720
 build/partition_table/partition-table.bin
+build/esba_missil.bin
+build/esba_missil.elf
+build/esba_missil.map
+build/CMakeFiles/esba_missil.elf.dir/project_elf_src_esp32.c.obj
+build/esp-idf/main/CMakeFiles/__idf_main.dir/game_logic.c.obj
+build/esp-idf/main/CMakeFiles/__idf_main.dir/lcd_i2c.c.obj
+build/esp-idf/main/CMakeFiles/__idf_main.dir/rfid_rc522.c.obj
+build/log/idf_py_stderr_output_7724
+build/log/idf_py_stderr_output_20888
+build/log/idf_py_stderr_output_29404
+build/log/idf_py_stdout_output_7724
+build/log/idf_py_stdout_output_20888
+build/log/idf_py_stdout_output_29404
