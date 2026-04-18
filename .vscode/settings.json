@@ -1,5 +1,6 @@
 {
     "idf.currentSetup": "C:\\Users\\tsrro\\esp\\v5.5.1\\esp-idf",
     "idf.flashType": "UART",
-    "idf.portWin": "COM3"
+    "idf.portWin": "COM3",
+    "idf.monitorPort": "COM3"
 }
