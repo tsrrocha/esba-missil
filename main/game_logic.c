@@ -229,11 +229,12 @@ void game_tick(uint32_t delta_ms)
     portENTER_CRITICAL(&s_state_mux);
 
     /* Determinar se algum botão está sendo segurado (para UI de progresso) */
-    if (!s_btn_yellow.last_stable && s_btn_yellow.hold_timer > 0) {
+    /* Apenas mostra progresso se o time NÃO for o dominador atual */
+    if (!s_btn_yellow.last_stable && s_btn_yellow.hold_timer > 0 && s_state.dominator != TEAM_YELLOW) {
         s_state.capturing      = true;
         s_state.capturing_team = TEAM_YELLOW;
         s_state.capture_progress_ms = s_btn_yellow.hold_timer;
-    } else if (!s_btn_blue.last_stable && s_btn_blue.hold_timer > 0) {
+    } else if (!s_btn_blue.last_stable && s_btn_blue.hold_timer > 0 && s_state.dominator != TEAM_BLUE) {
         s_state.capturing      = true;
         s_state.capturing_team = TEAM_BLUE;
         s_state.capture_progress_ms = s_btn_blue.hold_timer;
