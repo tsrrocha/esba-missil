@@ -36,11 +36,43 @@ static uint8_t s_backlight = LCD_BIT_BACKLIGHT;  /**< Estado do backlight */
  * ──────────────────────────────────────────────────────────────────────────── */
 
 /**
- * @brief Envia um byte cru ao PCF8574 via I2C.
+ * @brief Número máximo de tentativas de envio I2C antes de desistir.
+ *
+ * Cada tentativa falhada aguarda LCD_I2C_RETRY_DELAY_MS antes de tentar
+ * novamente. Isso é útil quando o módulo LCD demora para inicializar
+ * ou há mau contato nos fios I2C.
+ */
+#define LCD_I2C_MAX_RETRIES     5
+#define LCD_I2C_RETRY_DELAY_MS  5000
+
+/**
+ * @brief Envia um byte cru ao PCF8574 via I2C com retry automático.
+ *
+ * Se a transmissão falhar (NACK, timeout, etc.), aguarda 5 segundos e
+ * tenta novamente até LCD_I2C_MAX_RETRIES vezes. Isso permite que o
+ * sistema se recupere de:
+ *   - Mau contato temporário nos fios SDA/SCL
+ *   - LCD ainda inicializando após power-on
+ *   - Interferência eletromagnética momentânea
  */
 static esp_err_t pcf8574_write(uint8_t data)
 {
-    return i2c_master_transmit(s_dev_handle, &data, 1, 100);
+    esp_err_t ret;
+
+    for (int attempt = 0; attempt < LCD_I2C_MAX_RETRIES; attempt++) {
+        ret = i2c_master_transmit(s_dev_handle, &data, 1, 100);
+        if (ret == ESP_OK) {
+            return ESP_OK;
+        }
+
+        ESP_LOGW(TAG, "I2C NACK/erro (tentativa %d/%d) — aguardando %dms...",
+                 attempt + 1, LCD_I2C_MAX_RETRIES, LCD_I2C_RETRY_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(LCD_I2C_RETRY_DELAY_MS));
+    }
+
+    ESP_LOGE(TAG, "I2C falhou após %d tentativas — verifique conexões!",
+             LCD_I2C_MAX_RETRIES);
+    return ret;
 }
 
 /**

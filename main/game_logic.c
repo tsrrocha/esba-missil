@@ -17,6 +17,8 @@
 #include <string.h>
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -53,6 +55,24 @@ static button_ctx_t s_btn_blue;
 
 /* Acumulador sub-segundo para contagem de tempo de posse */
 static uint32_t s_possession_accumulator_ms = 0;
+
+/* Acumulador para salvar NVS a cada NVS_SAVE_INTERVAL_MS */
+static uint32_t s_nvs_save_accumulator_ms = 0;
+
+/* Últimos valores salvos na NVS (para evitar escritas desnecessárias) */
+static uint32_t s_last_saved_yellow = 0;
+static uint32_t s_last_saved_blue   = 0;
+static team_t   s_last_saved_dom    = TEAM_NONE;
+
+/* ────────────────────────────────────────────────────────────────────────────
+ *  Namespace e chaves NVS
+ * ──────────────────────────────────────────────────────────────────────────── */
+#define NVS_NAMESPACE   "game"        /**< Namespace NVS para dados do jogo  */
+#define NVS_KEY_YELLOW  "yellow_sec"  /**< Chave: tempo Amarelo em segundos  */
+#define NVS_KEY_BLUE    "blue_sec"    /**< Chave: tempo Azul em segundos     */
+#define NVS_KEY_DOM     "dominator"   /**< Chave: time dominante (0/1/2)     */
+
+static nvs_handle_t s_nvs_handle = 0; /**< Handle NVS aberto                */
 
 /* ────────────────────────────────────────────────────────────────────────────
  *  Funções internas
@@ -254,4 +274,162 @@ void game_tick(uint32_t delta_ms)
     }
 
     portEXIT_CRITICAL(&s_state_mux);
+
+    /* ── Auto-save NVS a cada NVS_SAVE_INTERVAL_MS ─────────────────────── */
+    s_nvs_save_accumulator_ms += delta_ms;
+    if (s_nvs_save_accumulator_ms >= NVS_SAVE_INTERVAL_MS) {
+        s_nvs_save_accumulator_ms = 0;
+        game_nvs_save();
+    }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ *  Persistência NVS (Non-Volatile Storage)
+ *
+ *  A NVS do ESP32 usa partição de flash com wear-leveling interno.
+ *  Com salvamento a cada 60 segundos, a vida útil estimada da flash
+ *  (100.000 ciclos) permite ~6.900 horas de jogo contínuo (~288 dias).
+ *
+ *  Fluxo:
+ *    1. game_nvs_init()  → Inicializa flash + abre namespace + carrega dados
+ *    2. game_nvs_save()  → Salva apenas se houve mudança (dirty check)
+ *    3. game_nvs_reset() → Zera RAM + apaga chaves NVS (nova partida)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+esp_err_t game_nvs_init(void)
+{
+    ESP_LOGI(TAG, "Inicializando NVS Flash...");
+
+    /* Inicializar subsistema NVS */
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        /* Partição corrompida ou versão incompatível — apagar e reinicializar */
+        ESP_LOGW(TAG, "NVS corrompida/incompatível — apagando e reinicializando");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    /* Abrir namespace para dados do jogo */
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &s_nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Falha ao abrir NVS namespace '%s': %s",
+                 NVS_NAMESPACE, esp_err_to_name(ret));
+        return ret;
+    }
+
+    /* ── Tentar restaurar dados salvos ──────────────────────────────────── */
+    uint32_t yellow = 0, blue = 0;
+    int32_t  dom = 0;
+    bool has_data = false;
+
+    if (nvs_get_u32(s_nvs_handle, NVS_KEY_YELLOW, &yellow) == ESP_OK) {
+        has_data = true;
+    }
+    if (nvs_get_u32(s_nvs_handle, NVS_KEY_BLUE, &blue) == ESP_OK) {
+        has_data = true;
+    }
+    if (nvs_get_i32(s_nvs_handle, NVS_KEY_DOM, &dom) == ESP_OK) {
+        has_data = true;
+    }
+
+    if (has_data) {
+        portENTER_CRITICAL(&s_state_mux);
+        s_state.yellow_time_sec = yellow;
+        s_state.blue_time_sec   = blue;
+        s_state.dominator       = (team_t)dom;
+        portEXIT_CRITICAL(&s_state_mux);
+
+        /* Atualizar cache de comparação */
+        s_last_saved_yellow = yellow;
+        s_last_saved_blue   = blue;
+        s_last_saved_dom    = (team_t)dom;
+
+        ESP_LOGI(TAG, "Estado restaurado da NVS:");
+        ESP_LOGI(TAG, "  Amarelo: %lu s | Azul: %lu s | Dominator: %d",
+                 (unsigned long)yellow, (unsigned long)blue, (int)dom);
+    } else {
+        ESP_LOGI(TAG, "Nenhum dado salvo encontrado — nova partida");
+    }
+
+    return ESP_OK;
+}
+
+void game_nvs_save(void)
+{
+    if (s_nvs_handle == 0) return;  /* NVS não inicializada */
+
+    /* Ler estado atual de forma thread-safe */
+    game_state_t snap;
+    game_get_state(&snap);
+
+    /* Dirty check: só escrever na flash se algo mudou */
+    bool dirty = false;
+    if (snap.yellow_time_sec != s_last_saved_yellow) dirty = true;
+    if (snap.blue_time_sec   != s_last_saved_blue)   dirty = true;
+    if (snap.dominator       != s_last_saved_dom)    dirty = true;
+
+    if (!dirty) {
+        ESP_LOGD(TAG, "NVS: sem alterações — save ignorado");
+        return;
+    }
+
+    /* Escrever valores atualizados */
+    esp_err_t ret;
+    ret = nvs_set_u32(s_nvs_handle, NVS_KEY_YELLOW, snap.yellow_time_sec);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "NVS: falha ao salvar yellow_sec: %s", esp_err_to_name(ret));
+    }
+
+    ret = nvs_set_u32(s_nvs_handle, NVS_KEY_BLUE, snap.blue_time_sec);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "NVS: falha ao salvar blue_sec: %s", esp_err_to_name(ret));
+    }
+
+    ret = nvs_set_i32(s_nvs_handle, NVS_KEY_DOM, (int32_t)snap.dominator);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "NVS: falha ao salvar dominator: %s", esp_err_to_name(ret));
+    }
+
+    /* Commit (flush para flash) */
+    ret = nvs_commit(s_nvs_handle);
+    if (ret == ESP_OK) {
+        s_last_saved_yellow = snap.yellow_time_sec;
+        s_last_saved_blue   = snap.blue_time_sec;
+        s_last_saved_dom    = snap.dominator;
+        ESP_LOGI(TAG, "NVS salvo: AMA=%lu s | AZU=%lu s | DOM=%d",
+                 (unsigned long)snap.yellow_time_sec,
+                 (unsigned long)snap.blue_time_sec,
+                 (int)snap.dominator);
+    } else {
+        ESP_LOGE(TAG, "NVS: falha no commit: %s", esp_err_to_name(ret));
+    }
+}
+
+void game_nvs_reset(void)
+{
+    ESP_LOGW(TAG, "Resetando dados da partida (RAM + NVS)...");
+
+    /* Zerar estado na RAM */
+    portENTER_CRITICAL(&s_state_mux);
+    s_state.yellow_time_sec = 0;
+    s_state.blue_time_sec   = 0;
+    s_state.dominator       = TEAM_NONE;
+    portEXIT_CRITICAL(&s_state_mux);
+
+    s_possession_accumulator_ms = 0;
+    s_nvs_save_accumulator_ms   = 0;
+    s_last_saved_yellow = 0;
+    s_last_saved_blue   = 0;
+    s_last_saved_dom    = TEAM_NONE;
+
+    /* Apagar chaves na NVS */
+    if (s_nvs_handle != 0) {
+        nvs_erase_key(s_nvs_handle, NVS_KEY_YELLOW);
+        nvs_erase_key(s_nvs_handle, NVS_KEY_BLUE);
+        nvs_erase_key(s_nvs_handle, NVS_KEY_DOM);
+        nvs_commit(s_nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Dados resetados — pronto para nova partida");
 }

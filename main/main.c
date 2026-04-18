@@ -332,13 +332,16 @@ void app_main(void)
     ESP_LOGI(TAG, "═══════════════════════════════════════════════════");
 
     /* ── Inicialização de periféricos ──────────────────────────────────── */
-    ESP_LOGI(TAG, "[1/3] Inicializando LCD I2C...");
+    ESP_LOGI(TAG, "[1/4] Inicializando NVS (memória não-volátil)...");
+    ESP_ERROR_CHECK(game_nvs_init());
+
+    ESP_LOGI(TAG, "[2/4] Inicializando LCD I2C...");
     ESP_ERROR_CHECK(lcd_init());
 
-    ESP_LOGI(TAG, "[2/3] Inicializando GPIOs do jogo...");
+    ESP_LOGI(TAG, "[3/4] Inicializando GPIOs do jogo...");
     game_gpio_init();
 
-    ESP_LOGI(TAG, "[3/3] Inicializando RFID MFRC522...");
+    ESP_LOGI(TAG, "[4/4] Inicializando RFID MFRC522...");
     ESP_ERROR_CHECK(rc522_init());
 
     /* ── Criação das Tasks FreeRTOS ────────────────────────────────────── */

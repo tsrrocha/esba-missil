@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,7 @@ extern "C" {
 #define CAPTURE_HOLD_MS     5000    /**< Tempo de pressionamento para captura */
 #define DEBOUNCE_MS         50      /**< Debounce dos botões                  */
 #define RELAY_FIRE_MS       3000    /**< Tempo de acionamento do relé         */
+#define NVS_SAVE_INTERVAL_MS 60000  /**< Salvar NVS a cada 60 segundos        */
 
 /* ────────────────────────────────────────────────────────────────────────────
  *  Estados do Jogo
@@ -94,10 +96,38 @@ void game_buzzer_beep(uint32_t duration_ms);
  *
  * Monitora botões com debounce, verifica pressionamento sustentado de 5s,
  * e acumula tempo de posse do time dominante.
+ * A cada NVS_SAVE_INTERVAL_MS, salva automaticamente os cronômetros na NVS.
  *
  * @param delta_ms Tempo decorrido desde a última chamada (em ms).
  */
 void game_tick(uint32_t delta_ms);
+
+/**
+ * @brief Inicializa o NVS e restaura os cronômetros salvos (se existirem).
+ *
+ * Deve ser chamado ANTES de game_gpio_init() no app_main().
+ * Se houver dados de uma partida anterior na flash, os tempos de posse
+ * e o time dominante são restaurados automaticamente.
+ *
+ * @return ESP_OK em sucesso.
+ */
+esp_err_t game_nvs_init(void);
+
+/**
+ * @brief Salva o estado atual dos cronômetros na NVS imediatamente.
+ *
+ * Chamado automaticamente a cada 60s pelo game_tick(), mas pode ser
+ * invocado manualmente (ex: antes de um deep sleep programado).
+ */
+void game_nvs_save(void);
+
+/**
+ * @brief Limpa os dados salvos na NVS (para iniciar nova partida).
+ *
+ * Zera os cronômetros de posse e o estado de domínio tanto na RAM
+ * quanto na flash.
+ */
+void game_nvs_reset(void);
 
 #ifdef __cplusplus
 }
