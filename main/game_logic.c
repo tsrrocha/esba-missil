@@ -246,16 +246,16 @@ void game_tick(uint32_t delta_ms)
     /* ── Troca de domínio ──────────────────────────────────────────────── */
     if (yellow_captured && s_state.dominator != TEAM_YELLOW) {
         s_state.dominator = TEAM_YELLOW;
-        ESP_LOGI(TAG, "*** EQUIPE AMARELA DOMINA ***");
         portEXIT_CRITICAL(&s_state_mux);
+        ESP_LOGI(TAG, "*** EQUIPE AMARELA DOMINA ***");
         game_buzzer_beep(200);  /* Feedback sonoro */
         return;
     }
 
     if (blue_captured && s_state.dominator != TEAM_BLUE) {
         s_state.dominator = TEAM_BLUE;
-        ESP_LOGI(TAG, "*** EQUIPE AZUL DOMINA ***");
         portEXIT_CRITICAL(&s_state_mux);
+        ESP_LOGI(TAG, "*** EQUIPE AZUL DOMINA ***");
         game_buzzer_beep(200);
         return;
     }

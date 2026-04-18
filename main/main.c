@@ -114,11 +114,29 @@ static void Task_UI(void *pvParameters)
 
     /* Tela de boot */
     lcd_clear();
-    lcd_print_at(0, 0, " SISTEMA TATICO ");
-    lcd_print_at(0, 1, "  MULTIMISSAO   ");
-    lcd_print_at(0, 2, "  ESP32  v1.0   ");
-    lcd_print_at(0, 3, "   LOADING...   ");
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    // 12345678901234567890
+    //  ESQUADRAO BAIONETA
+    //   SISTEMA TATICO
+    // MULTIMISSAO    v1.0
+    // CARREGANDO...   
+    //                 "12345678901234567890"
+    lcd_print_at(0, 0, " ESQUADRAO BAIONETA ");
+    lcd_print_at(0, 1, "   SISTEMA TATICO   ");
+    lcd_print_at(0, 2, "MULTIMISSAO     v1.0");
+    lcd_print_at(0, 3, "CARREGANDO.         ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO..        ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO...       ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO....      ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO.....     ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO......    ");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    lcd_print_at(0, 3, "CARREGANDO.......   ");
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     /* Cabeçalhos fixos */
     lcd_clear();
@@ -137,9 +155,10 @@ static void Task_UI(void *pvParameters)
         /* ── Linha 0: Título + Status de domínio ──────────────────────── */
         const char *dom_str;
         switch (state.dominator) {
-            case TEAM_YELLOW: dom_str = "  DOM: AMARELO  "; break;
-            case TEAM_BLUE:   dom_str = "   DOM: AZUL    "; break;
-            default:          dom_str = " SEM DOMINACAO  "; break;
+            //                           12345678901234567890      
+            case TEAM_YELLOW: dom_str = " DOMINIO: AMARELO   "; break;
+            case TEAM_BLUE:   dom_str = " DOMINIO: AZUL      "; break;
+            default:          dom_str = "<< SEM DOMINACAO  >>"; break;
         }
         lcd_print_at(0, 0, dom_str);
 
@@ -148,9 +167,9 @@ static void Task_UI(void *pvParameters)
         format_time(state.yellow_time_sec, t_yellow, sizeof(t_yellow));
         format_time(state.blue_time_sec, t_blue, sizeof(t_blue));
         lcd_set_cursor(0, 1);
-        lcd_print("A:");
+        lcd_print("AM:");
         lcd_print(t_yellow);
-        lcd_print("  B:");
+        lcd_print("    AZ:");
         lcd_print(t_blue);
         lcd_print("  ");  /* Limpa resíduos */
 
@@ -167,13 +186,15 @@ static void Task_UI(void *pvParameters)
             /* Mostrar indicador do time dominante com seta */
             switch (state.dominator) {
                 case TEAM_YELLOW:
-                    lcd_print_at(0, 2, ">>> AMARELO <<< ");
+                    //                  12345678901234567890   
+                    lcd_print_at(0, 2, ">>>>> AMARELO <<<<<");
                     break;
                 case TEAM_BLUE:
-                    lcd_print_at(0, 2, ">>>  AZUL   <<< ");
+                    //                  12345678901234567890   
+                    lcd_print_at(0, 2, ">>>>>   AZUL   <<<<<");
                     break;
                 default:
-                    lcd_print_at(0, 2, "  PRESS 5s CAP  ");
+                    lcd_print_at(0, 2, "  PRESS 5s CAPTURA  ");
                     break;
             }
         }

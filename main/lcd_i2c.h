@@ -28,7 +28,7 @@ extern "C" {
 #define LCD_I2C_SDA_PIN     21      /**< GPIO para SDA                       */
 #define LCD_I2C_SCL_PIN     22      /**< GPIO para SCL - compartilhado com   */
                                     /*   RST do RFID, ver nota no main.c     */
-#define LCD_I2C_FREQ_HZ     10000   /**< 10 kHz (muito lento, mas extremamente seguro) */
+#define LCD_I2C_FREQ_HZ     50000  /**< 100 kHz (Estavel agora com timings longos) */
 
 #define LCD_COLS            20      /**< Colunas do display (20 para 2004A)  */
 #define LCD_ROWS            4       /**< Linhas do display (4 para 2004A)    */
