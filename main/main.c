@@ -177,9 +177,14 @@ static void Task_UI(void *pvParameters)
         if (state.capturing) {
             uint32_t pct = (state.capture_progress_ms * 100) / CAPTURE_HOLD_MS;
             if (pct > 100) pct = 100;
-            const char *team_name = (state.capturing_team == TEAM_YELLOW)
-                                    ? "AMA" : "AZU";
-            snprintf(line_buf, sizeof(line_buf), "CAP %s: %3lu%%   ", team_name,
+            
+            const char *action = "CAP";
+            if (state.dominator != TEAM_NONE && state.capturing_team != state.dominator) {
+                action = "DES";
+            }
+
+            const char *team_name = (state.capturing_team == TEAM_YELLOW) ? "AMA" : "AZU";
+            snprintf(line_buf, sizeof(line_buf), "%s %s: %3lu%%        ", action, team_name,
                      (unsigned long)pct);
             lcd_print_at(0, 2, line_buf);
         } else {

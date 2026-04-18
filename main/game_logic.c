@@ -245,19 +245,49 @@ void game_tick(uint32_t delta_ms)
     }
 
     /* ── Troca de domínio ──────────────────────────────────────────────── */
-    if (yellow_captured && s_state.dominator != TEAM_YELLOW) {
-        s_state.dominator = TEAM_YELLOW;
+    if (yellow_captured) {
         portEXIT_CRITICAL(&s_state_mux);
-        ESP_LOGI(TAG, "*** EQUIPE AMARELA DOMINA ***");
-        game_buzzer_beep(200);  /* Feedback sonoro */
+        
+        bool was_none;
+        portENTER_CRITICAL(&s_state_mux);
+        was_none = (s_state.dominator == TEAM_NONE);
+        
+        if (s_state.dominator == TEAM_BLUE) {
+            s_state.dominator = TEAM_NONE;
+            portEXIT_CRITICAL(&s_state_mux);
+            ESP_LOGW(TAG, "!!! PONTO NEUTRALIZADO PELA EQUIPE AMARELA !!!");
+            game_buzzer_beep(200);
+        } else if (was_none) {
+            s_state.dominator = TEAM_YELLOW;
+            portEXIT_CRITICAL(&s_state_mux);
+            ESP_LOGI(TAG, "*** EQUIPE AMARELA DOMINA ***");
+            game_buzzer_beep(200);
+        } else {
+            portEXIT_CRITICAL(&s_state_mux);
+        }
         return;
     }
 
-    if (blue_captured && s_state.dominator != TEAM_BLUE) {
-        s_state.dominator = TEAM_BLUE;
+    if (blue_captured) {
         portEXIT_CRITICAL(&s_state_mux);
-        ESP_LOGI(TAG, "*** EQUIPE AZUL DOMINA ***");
-        game_buzzer_beep(200);
+        
+        bool was_none;
+        portENTER_CRITICAL(&s_state_mux);
+        was_none = (s_state.dominator == TEAM_NONE);
+        
+        if (s_state.dominator == TEAM_YELLOW) {
+            s_state.dominator = TEAM_NONE;
+            portEXIT_CRITICAL(&s_state_mux);
+            ESP_LOGW(TAG, "!!! PONTO NEUTRALIZADO PELA EQUIPE AZUL !!!");
+            game_buzzer_beep(200);
+        } else if (was_none) {
+            s_state.dominator = TEAM_BLUE;
+            portEXIT_CRITICAL(&s_state_mux);
+            ESP_LOGI(TAG, "*** EQUIPE AZUL DOMINA ***");
+            game_buzzer_beep(200);
+        } else {
+            portEXIT_CRITICAL(&s_state_mux);
+        }
         return;
     }
 
