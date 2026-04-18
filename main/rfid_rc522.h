@@ -33,7 +33,7 @@ extern "C" {
 #define RC522_PIN_MOSI      23
 #define RC522_PIN_CS        5
 #define RC522_PIN_RST       4           /**< Reset via GPIO dedicado         */
-#define RC522_SPI_FREQ_HZ   5000000     /**< 5 MHz (máx MFRC522 = 10 MHz)   */
+#define RC522_SPI_FREQ_HZ   1000000     /**< 1 MHz (Reduzido para diagnostico) */
 
 /* ────────────────────────────────────────────────────────────────────────────
  *  Registradores MFRC522 (subset utilizado)

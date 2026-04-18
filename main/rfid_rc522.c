@@ -187,17 +187,17 @@ esp_err_t rc522_init(void)
     };
     ESP_ERROR_CHECK(spi_bus_add_device(RC522_SPI_HOST, &dev_cfg, &s_spi_handle));
 
-    /* ── Hardware Reset ────────────────────────────────────────────────── */
+    /* -- Hardware Reset -- */
     gpio_reset_pin(RC522_PIN_RST);
     gpio_set_direction(RC522_PIN_RST, GPIO_MODE_OUTPUT);
     gpio_set_level(RC522_PIN_RST, 0);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));      /* Aumentado para 50ms */
     gpio_set_level(RC522_PIN_RST, 1);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(100));     /* Aumentado para 100ms */
 
-    /* ── Soft Reset ────────────────────────────────────────────────────── */
+    /* -- Soft Reset -- */
     rc522_write_reg(RC522_REG_COMMAND, RC522_CMD_SOFT_RESET);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(50));      /* Aguardar reset interno */
 
     /* Verificar versão do chip (0x91 = v1.0, 0x92 = v2.0) */
     uint8_t version = rc522_read_reg(RC522_REG_VERSION);

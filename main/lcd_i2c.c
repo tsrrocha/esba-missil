@@ -1,6 +1,6 @@
 /**
  * @file lcd_i2c.c
- * @brief Implementação do driver LCD 16x4 via I2C (PCF8574 + HD44780)
+ * @brief Implementação do driver LCD 20x4/16x2 via I2C (PCF8574 + HD44780)
  *
  * O LCD HD44780 é controlado em modo 4-bit através do expansor I2C PCF8574.
  * Cada byte enviado ao PCF8574 mapeia diretamente os 8 pinos do expansor:
@@ -9,7 +9,7 @@
  *
  * O protocolo consiste em:
  *   1. Montar o byte com nibble de dados + bits de controle
- *   2. Pulsar o pino Enable (EN alto → EN baixo) para latch
+ *   2. Pulsar o pino Enable (EN alto -> EN baixo) para latch
  *   3. Para um byte completo, enviar primeiro o nibble alto, depois o baixo
  */
 
@@ -24,16 +24,16 @@
 
 static const char *TAG = "LCD_I2C";
 
-/* ────────────────────────────────────────────────────────────────────────────
+/* ----------------------------------------------------------------------------
  *  Handles I2C (ESP-IDF v5.x new driver)
- * ──────────────────────────────────────────────────────────────────────────── */
+ * ---------------------------------------------------------------------------- */
 static i2c_master_bus_handle_t  s_bus_handle = NULL;
 static i2c_master_dev_handle_t  s_dev_handle = NULL;
 static uint8_t s_backlight = LCD_BIT_BACKLIGHT;  /**< Estado do backlight */
 
-/* ────────────────────────────────────────────────────────────────────────────
- *  Funções internas
- * ──────────────────────────────────────────────────────────────────────────── */
+/* ----------------------------------------------------------------------------
+ *  Funcoes internas
+ * ---------------------------------------------------------------------------- */
 
 /**
  * @brief Número máximo de tentativas de envio I2C antes de desistir.
@@ -84,9 +84,9 @@ static esp_err_t pcf8574_write(uint8_t data)
 static void lcd_pulse_enable(uint8_t data)
 {
     pcf8574_write(data | LCD_BIT_EN);   /* EN = 1 */
-    ets_delay_us(1);
+    ets_delay_us(10);                   /* Aumentado para 10µs para maxima estabilidade */
     pcf8574_write(data & ~LCD_BIT_EN);  /* EN = 0 */
-    ets_delay_us(50);                   /* Tempo de processamento do comando */
+    ets_delay_us(150);                  /* Tempo de processamento estendido (seguro para clones) */
 }
 
 /**
@@ -96,7 +96,12 @@ static void lcd_pulse_enable(uint8_t data)
  */
 static void lcd_send_nibble(uint8_t nibble, uint8_t mode)
 {
-    uint8_t data = nibble | mode | s_backlight;
+    uint8_t data;
+#if (LCD_DATA_SHIFT >= 0)
+    data = (nibble << LCD_DATA_SHIFT) | mode | s_backlight;
+#else
+    data = (nibble >> (-LCD_DATA_SHIFT)) | mode | s_backlight;
+#endif
     pcf8574_write(data);
     lcd_pulse_enable(data);
 }
@@ -109,7 +114,9 @@ static void lcd_send_nibble(uint8_t nibble, uint8_t mode)
 static void lcd_send_byte(uint8_t byte, uint8_t mode)
 {
     lcd_send_nibble(byte & 0xF0, mode);         /* Nibble alto */
+    ets_delay_us(200);                          /* Delay entre nibbles aumentado */
     lcd_send_nibble((byte << 4) & 0xF0, mode);  /* Nibble baixo */
+    vTaskDelay(pdMS_TO_TICKS(1));               /* Pequeno folego entre bytes */
 }
 
 /**
@@ -128,16 +135,16 @@ static void lcd_data(uint8_t ch)
     lcd_send_byte(ch, LCD_BIT_RS);
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
- *  API Pública
- * ──────────────────────────────────────────────────────────────────────────── */
+/* ----------------------------------------------------------------------------
+ *  API Publica
+ * ---------------------------------------------------------------------------- */
 
 esp_err_t lcd_init(void)
 {
     ESP_LOGI(TAG, "Inicializando I2C bus (SDA=%d, SCL=%d)",
              LCD_I2C_SDA_PIN, LCD_I2C_SCL_PIN);
 
-    /* ── Configuração do barramento I2C (ESP-IDF v5.x new driver) ──────── */
+    /* -- Configuracao do barramento I2C (ESP-IDF v5.x new driver) -- */
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port   = LCD_I2C_PORT,
         .sda_io_num = LCD_I2C_SDA_PIN,
@@ -148,7 +155,7 @@ esp_err_t lcd_init(void)
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &s_bus_handle));
 
-    /* ── Adição do dispositivo LCD (PCF8574) ───────────────────────────── */
+    /* -- Adicao do dispositivo LCD (PCF8574) -- */
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address  = LCD_I2C_ADDR,
@@ -156,40 +163,43 @@ esp_err_t lcd_init(void)
     };
     ESP_ERROR_CHECK(i2c_master_bus_add_device(s_bus_handle, &dev_cfg, &s_dev_handle));
 
-    /* ── Sequência de inicialização HD44780 (datasheet, Figura 24) ───── */
-    /*    Após power-on, esperar >40ms                                    */
-    vTaskDelay(pdMS_TO_TICKS(50));
+    /* Teste de comunicacao I2C (ping) */
+    if (i2c_master_probe(s_bus_handle, LCD_I2C_ADDR, 100) != ESP_OK) {
+        ESP_LOGE(TAG, "LCD nao detectado no endereco 0x%02X! Verifique conexoes.", LCD_I2C_ADDR);
+    }
 
-    /*    Enviar 0x30 três vezes para garantir modo 8-bit antes de        */
-    /*    trocar para 4-bit                                                */
-    lcd_send_nibble(0x30, 0);
-    vTaskDelay(pdMS_TO_TICKS(5));    /* >4.1ms */
-    lcd_send_nibble(0x30, 0);
-    ets_delay_us(150);               /* >100µs */
-    lcd_send_nibble(0x30, 0);
-    ets_delay_us(150);
+    /* Sequência de inicialização HD44780 robusta (datasheet, Figura 24) */
+    vTaskDelay(pdMS_TO_TICKS(100));  /* Espera inicial estendida */
 
-    /* Agora sim: trocar para modo 4-bit */
+    /* Enviar 0x30 três vezes para garantir sincronismo */
+    lcd_send_nibble(0x30, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    lcd_send_nibble(0x30, 0);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    lcd_send_nibble(0x30, 0);
+    vTaskDelay(pdMS_TO_TICKS(1));
+
+    /* Trocar para modo 4-bit */
     lcd_send_nibble(0x20, 0);
-    ets_delay_us(150);
+    vTaskDelay(pdMS_TO_TICKS(1));
 
     /* Configuração: 4-bit, 2+ linhas, fonte 5x8 */
     lcd_command(0x28);
-    ets_delay_us(50);
+    ets_delay_us(100);
 
     /* Display ON, cursor OFF, blink OFF */
     lcd_command(0x0C);
-    ets_delay_us(50);
+    ets_delay_us(100);
 
     /* Clear display */
     lcd_command(0x01);
-    vTaskDelay(pdMS_TO_TICKS(3));   /* Clear requer >1.52ms */
+    vTaskDelay(pdMS_TO_TICKS(5));
 
-    /* Entry mode: incrementa cursor, sem shift */
+    /* Entry mode */
     lcd_command(0x06);
-    ets_delay_us(50);
+    ets_delay_us(100);
 
-    ESP_LOGI(TAG, "LCD 16x4 inicializado com sucesso");
+    ESP_LOGI(TAG, "LCD %dx%d inicializado com sucesso", LCD_COLS, LCD_ROWS);
     return ESP_OK;
 }
 
@@ -202,13 +212,11 @@ void lcd_clear(void)
 void lcd_set_cursor(uint8_t col, uint8_t row)
 {
     /*
-     * Endereços DDRAM para LCD 16x4:
-     *   Linha 0: 0x00 – 0x0F
-     *   Linha 1: 0x40 – 0x4F
-     *   Linha 2: 0x10 – 0x1F
-     *   Linha 3: 0x50 – 0x5F
+     * Endereços DDRAM típicos:
+     *   L0: 0x00 | L1: 0x40 | L2: 0x14 | L3: 0x54 (20x4)
+     *   L0: 0x00 | L1: 0x40 | L2: 0x10 | L3: 0x50 (16x4)
      */
-    static const uint8_t row_offsets[] = {0x00, 0x40, 0x10, 0x50};
+    static const uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
     if (row >= LCD_ROWS) row = LCD_ROWS - 1;
     if (col >= LCD_COLS) col = LCD_COLS - 1;
 
