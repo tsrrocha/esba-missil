@@ -23,6 +23,9 @@ extern "C" {
  * ──────────────────────────────────────────────────────────────────────────── */
 #define BTN_YELLOW_GPIO     13      /**< Botão Equipe Amarela (pull-up)      */
 #define BTN_BLUE_GPIO       14      /**< Botão Equipe Azul   (pull-up)       */
+#define BTN_RESET_GPIO      25      /**< Botão de Reset Geral (pull-up)      */
+#define LED_YELLOW_GPIO     32      /**< LED Indicador Amarelo               */
+#define LED_BLUE_GPIO       33      /**< LED Indicador Azul                  */
 #define RELAY_GPIO          27      /**< Relé de ignição do míssil           */
 #define BUZZER_GPIO         26      /**< Buzzer para feedback sonoro         */
 
@@ -30,6 +33,7 @@ extern "C" {
  *  Constantes de Jogo
  * ──────────────────────────────────────────────────────────────────────────── */
 #define CAPTURE_HOLD_MS     5000    /**< Tempo de pressionamento para captura */
+#define EXT_RESET_HOLD_MS   30000   /**< Tempo para Reset Geral (30s)         */
 #define DEBOUNCE_MS         50      /**< Debounce dos botões                  */
 #define RELAY_FIRE_MS       3000    /**< Tempo de acionamento do relé         */
 #define NVS_SAVE_INTERVAL_MS 60000  /**< Salvar NVS a cada 60 segundos        */
@@ -57,6 +61,8 @@ typedef struct {
     bool     capturing;           /**< Captura em andamento?                 */
     team_t   capturing_team;      /**< Time que está tentando capturar       */
     uint32_t capture_progress_ms; /**< Progresso da captura em ms            */
+    bool     resetting;           /**< Reset em andamento?                   */
+    uint32_t reset_progress_ms;   /**< Progresso do reset em ms              */
 } game_state_t;
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -152,7 +152,20 @@ static void Task_UI(void *pvParameters)
     for (;;) {
         game_get_state(&state);
 
-        /* ── Linha 0: Título + Status de domínio ──────────────────────── */
+        if (state.resetting) {
+            uint32_t pct = (state.reset_progress_ms * 100) / EXT_RESET_HOLD_MS;
+            if (pct > 100) pct = 100;
+            
+            // 12345678901234567890
+            lcd_print_at(0, 0, "!!! ALERTA RESET !!!");
+            lcd_print_at(0, 1, "MANTER PRESSIONADO..");
+            
+            snprintf(line_buf, sizeof(line_buf), "PROGRESSO: %3lu%%      ", (unsigned long)pct);
+            lcd_print_at(0, 2, line_buf);
+            
+            lcd_print_at(0, 3, "SOLTE P/ CANCELAR   ");
+        } else {
+            /* ── Linha 0: Título + Status de domínio ──────────────────────── */
         const char *dom_str;
         switch (state.dominator) {
             //                           12345678901234567890      
@@ -228,6 +241,7 @@ static void Task_UI(void *pvParameters)
         } else {
             lcd_print_at(0, 3, "  RFID PRONTO   ");
         }
+        } /* Fim do else (state.resetting) */
 
         /* ── Aguardar 500ms (período de atualização do LCD) ───────────── */
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(500));

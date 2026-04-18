@@ -141,12 +141,16 @@ MIT
 | 5 | CS / SS (Chip Select) | RFID MFRC522 | Saída | `rfid_rc522.h` → `RC522_PIN_CS` |
 | 13 | Botão Equipe Amarela | Entrada digital | Entrada (Pull-up) | `game_logic.h` → `BTN_YELLOW_GPIO` |
 | 14 | Botão Equipe Azul | Entrada digital | Entrada (Pull-up) | `game_logic.h` → `BTN_BLUE_GPIO` |
+| 25 | Botão de Reset Geral | Entrada digital | Entrada (Pull-up) | `game_logic.h` → `BTN_RESET_GPIO` |
 | 18 | SCK (SPI Clock) | RFID MFRC522 | Saída | `rfid_rc522.h` → `RC522_PIN_SCK` |
 | 19 | MISO (SPI Master In) | RFID MFRC522 | Entrada | `rfid_rc522.h` → `RC522_PIN_MISO` |
-| 21 | SDA (I2C Data) | LCD PCF8574 | Bidirecional | `lcd_i2c.h` → `LCD_I2C_SDA_PIN` |
-| 22 | SCL (I2C Clock) | LCD PCF8574 | Saída | `lcd_i2c.h` → `LCD_I2C_SCL_PIN` |
 | 23 | MOSI (SPI Master Out) | RFID MFRC522 | Saída | `rfid_rc522.h` → `RC522_PIN_MOSI` |
 | 26 | Buzzer (feedback sonoro) | Buzzer passivo | Saída | `game_logic.h` → `BUZZER_GPIO` |
 | 27 | Relé de Ignição | Módulo relé | Saída | `game_logic.h` → `RELAY_GPIO` |
+| 32 | LED Equipe Amarela | Saída digital | Saída | `game_logic.h` → `LED_YELLOW_GPIO` |
+| 33 | LED Equipe Azul | Saída digital | Saída | `game_logic.h` → `LED_BLUE_GPIO` |
+| SDA | SDA (I2C Data) | LCD PCF8574 | Bidirecional | `lcd_i2c.h` → `LCD_I2C_SDA_PIN` |
+| SCL | SCL (I2C Clock) | LCD PCF8574 | Saída | `lcd_i2c.h` → `LCD_I2C_SCL_PIN` |
+
 
 > **Total:** 11 GPIOs utilizados de 34 disponíveis no ESP32.

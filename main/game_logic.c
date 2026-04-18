@@ -52,6 +52,7 @@ typedef struct {
 
 static button_ctx_t s_btn_yellow;
 static button_ctx_t s_btn_blue;
+static button_ctx_t s_btn_reset;
 
 /* Acumulador sub-segundo para contagem de tempo de posse */
 static uint32_t s_possession_accumulator_ms = 0;
@@ -73,6 +74,15 @@ static team_t   s_last_saved_dom    = TEAM_NONE;
 #define NVS_KEY_DOM     "dominator"   /**< Chave: time dominante (0/1/2)     */
 
 static nvs_handle_t s_nvs_handle = 0; /**< Handle NVS aberto                */
+
+/**
+ * @brief Atualiza o estado físico dos LEDs de equipe.
+ */
+static void update_team_leds(team_t dominator)
+{
+    gpio_set_level(LED_YELLOW_GPIO, (dominator == TEAM_YELLOW) ? 1 : 0);
+    gpio_set_level(LED_BLUE_GPIO, (dominator == TEAM_BLUE) ? 1 : 0);
+}
 
 /* ────────────────────────────────────────────────────────────────────────────
  *  Funções internas
@@ -103,9 +113,10 @@ static void button_ctx_init(button_ctx_t *ctx, int gpio, team_t team)
  *
  * @param ctx      Contexto do botão.
  * @param delta_ms Tempo desde a última chamada.
- * @return true se o botão atingiu os 5 segundos de hold.
+ * @param target_hold_ms Tempo alvo para considerar "pressionado".
+ * @return true se o botão atingiu o target_hold_ms.
  */
-static bool button_process(button_ctx_t *ctx, uint32_t delta_ms)
+static bool button_process(button_ctx_t *ctx, uint32_t delta_ms, uint32_t target_hold_ms)
 {
     bool raw = gpio_get_level(ctx->gpio);  /* HIGH = solto (pull-up) */
 
@@ -131,7 +142,7 @@ static bool button_process(button_ctx_t *ctx, uint32_t delta_ms)
         /* Se pressionado (LOW), acumula hold */
         if (!ctx->last_stable) {
             ctx->hold_timer += delta_ms;
-            if (ctx->hold_timer >= CAPTURE_HOLD_MS) {
+            if (ctx->hold_timer >= target_hold_ms) {
                 ctx->hold_timer = 0;  /* Reseta para evitar trigger contínuo */
                 return true;
             }
@@ -151,7 +162,7 @@ void game_gpio_init(void)
 
     /* ── Botões com Pull-up interno ────────────────────────────────────── */
     gpio_config_t btn_cfg = {
-        .pin_bit_mask = (1ULL << BTN_YELLOW_GPIO) | (1ULL << BTN_BLUE_GPIO),
+        .pin_bit_mask = (1ULL << BTN_YELLOW_GPIO) | (1ULL << BTN_BLUE_GPIO) | (1ULL << BTN_RESET_GPIO),
         .mode         = GPIO_MODE_INPUT,
         .pull_up_en   = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -181,12 +192,24 @@ void game_gpio_init(void)
     gpio_config(&buzzer_cfg);
     gpio_set_level(BUZZER_GPIO, 0);
 
+    /* ── LEDs de Indicação ─────────────────────────────────────────────── */
+    gpio_config_t led_cfg = {
+        .pin_bit_mask = (1ULL << LED_YELLOW_GPIO) | (1ULL << LED_BLUE_GPIO),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&led_cfg);
+    update_team_leds(TEAM_NONE);
+
     /* ── Inicializar contextos de botões ───────────────────────────────── */
     button_ctx_init(&s_btn_yellow, BTN_YELLOW_GPIO, TEAM_YELLOW);
     button_ctx_init(&s_btn_blue,   BTN_BLUE_GPIO,   TEAM_BLUE);
+    button_ctx_init(&s_btn_reset,  BTN_RESET_GPIO,  TEAM_NONE);
 
-    ESP_LOGI(TAG, "GPIOs inicializados: BTN_Y=%d, BTN_B=%d, RELAY=%d, BUZZER=%d",
-             BTN_YELLOW_GPIO, BTN_BLUE_GPIO, RELAY_GPIO, BUZZER_GPIO);
+    ESP_LOGI(TAG, "GPIOs inicializados: BTN_Y=%d, BTN_B=%d, BTN_R=%d, RELAY=%d, BUZZER=%d",
+             BTN_YELLOW_GPIO, BTN_BLUE_GPIO, BTN_RESET_GPIO, RELAY_GPIO, BUZZER_GPIO);
 }
 
 void game_get_state(game_state_t *state)
@@ -222,13 +245,23 @@ void game_buzzer_beep(uint32_t duration_ms)
 void game_tick(uint32_t delta_ms)
 {
     /* ── Processar botões ──────────────────────────────────────────────── */
-    bool yellow_captured = button_process(&s_btn_yellow, delta_ms);
-    bool blue_captured   = button_process(&s_btn_blue, delta_ms);
+    bool yellow_captured = button_process(&s_btn_yellow, delta_ms, CAPTURE_HOLD_MS);
+    bool blue_captured   = button_process(&s_btn_blue,   delta_ms, CAPTURE_HOLD_MS);
+    bool reset_triggered = button_process(&s_btn_reset,  delta_ms, EXT_RESET_HOLD_MS);
 
     /* ── Atualizar captura visual (progresso) ─────────────────────────── */
     portENTER_CRITICAL(&s_state_mux);
 
-    /* Determinar se algum botão está sendo segurado (para UI de progresso) */
+    /* 1. Processar Botão de Reset (Prioridade UI) */
+    if (!s_btn_reset.last_stable && s_btn_reset.hold_timer > 0) {
+        s_state.resetting = true;
+        s_state.reset_progress_ms = s_btn_reset.hold_timer;
+    } else {
+        s_state.resetting = false;
+        s_state.reset_progress_ms = 0;
+    }
+
+    /* 2. Processar Captura/Domínio */
     /* Apenas mostra progresso se o time NÃO for o dominador atual */
     if (!s_btn_yellow.last_stable && s_btn_yellow.hold_timer > 0 && s_state.dominator != TEAM_YELLOW) {
         s_state.capturing      = true;
@@ -244,7 +277,17 @@ void game_tick(uint32_t delta_ms)
         s_state.capture_progress_ms = 0;
     }
 
-    /* ── Troca de domínio ──────────────────────────────────────────────── */
+    /* ── Ações Resultantes ─────────────────────────────────────────────── */
+    
+    /* 1. Reset Geral (Prioridade Máxima) */
+    if (reset_triggered) {
+        portEXIT_CRITICAL(&s_state_mux);
+        game_nvs_reset();
+        game_buzzer_beep(1000);  /* Beep longo de confirmação */
+        return;
+    }
+
+    /* 2. Troca de domínio ──────────────────────────────────────────────── */
     if (yellow_captured) {
         portEXIT_CRITICAL(&s_state_mux);
         
@@ -254,11 +297,13 @@ void game_tick(uint32_t delta_ms)
         
         if (s_state.dominator == TEAM_BLUE) {
             s_state.dominator = TEAM_NONE;
+            update_team_leds(TEAM_NONE);
             portEXIT_CRITICAL(&s_state_mux);
             ESP_LOGW(TAG, "!!! PONTO NEUTRALIZADO PELA EQUIPE AMARELA !!!");
             game_buzzer_beep(200);
         } else if (was_none) {
             s_state.dominator = TEAM_YELLOW;
+            update_team_leds(TEAM_YELLOW);
             portEXIT_CRITICAL(&s_state_mux);
             ESP_LOGI(TAG, "*** EQUIPE AMARELA DOMINA ***");
             game_buzzer_beep(200);
@@ -277,11 +322,13 @@ void game_tick(uint32_t delta_ms)
         
         if (s_state.dominator == TEAM_YELLOW) {
             s_state.dominator = TEAM_NONE;
+            update_team_leds(TEAM_NONE);
             portEXIT_CRITICAL(&s_state_mux);
             ESP_LOGW(TAG, "!!! PONTO NEUTRALIZADO PELA EQUIPE AZUL !!!");
             game_buzzer_beep(200);
         } else if (was_none) {
             s_state.dominator = TEAM_BLUE;
+            update_team_leds(TEAM_BLUE);
             portEXIT_CRITICAL(&s_state_mux);
             ESP_LOGI(TAG, "*** EQUIPE AZUL DOMINA ***");
             game_buzzer_beep(200);
@@ -375,6 +422,7 @@ esp_err_t game_nvs_init(void)
         s_last_saved_yellow = yellow;
         s_last_saved_blue   = blue;
         s_last_saved_dom    = (team_t)dom;
+        update_team_leds((team_t)dom);
 
         ESP_LOGI(TAG, "Estado restaurado da NVS:");
         ESP_LOGI(TAG, "  Amarelo: %lu s | Azul: %lu s | Dominator: %d",
@@ -453,6 +501,7 @@ void game_nvs_reset(void)
     s_last_saved_yellow = 0;
     s_last_saved_blue   = 0;
     s_last_saved_dom    = TEAM_NONE;
+    update_team_leds(TEAM_NONE);
 
     /* Apagar chaves na NVS */
     if (s_nvs_handle != 0) {
